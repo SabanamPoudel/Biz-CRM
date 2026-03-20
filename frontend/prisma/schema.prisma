@@ -1,0 +1,307 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Service enums
+enum ServiceType {
+  BASE
+  ADDON
+}
+
+enum PlanType {
+  BASE
+  ADDON
+}
+
+enum BillingInterval {
+  ONE_TIME
+  MONTHLY
+  YEARLY
+}
+
+model User {
+  id           Int       @id @default(autoincrement())
+  email        String    @unique
+  name         String?
+  passwordHash String    // Required field for new users (can be empty for Google auth)
+  googleId     String?   // Google user ID for OAuth
+  picture      String?   // Profile picture URL from Google
+  role         String    @default("admin") // User role: admin or user
+  createdAt    DateTime  @default(now())
+  
+  // User's country of residence (user-level, not company-level)
+  country      String?
+  
+  // Legacy onboarding fields (kept for backward compatibility)
+  companyOrigin        String?  // form-new or run-existing
+  businessType         String?  // llc or c-corp
+  companyName          String?
+  selectedState        String?  // state id (wyoming, california, etc)
+  ownershipData        String?  // JSON string of ownership information
+  selectedPlan         String?  // starter, total-compliance, business-in-a-box
+  billingType          String?  // monthly or annual
+  expeditedEIN         Boolean? @default(false)
+  upgradeToCompliance  Boolean? @default(false)
+  onboardingComplete   Boolean? @default(false)
+  
+  // Relations
+  companies    Company[]
+}
+
+model Company {
+  id                   Int      @id @default(autoincrement())
+  userId               Int
+  user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Company details
+  companyName          String
+  companyOrigin        String?  // form-new or run-existing
+  businessType         String   // llc or c-corp
+  selectedState        String   // state id (wyoming, california, etc)
+  ownershipData        String?  // JSON string of ownership information
+  
+  // Subscription details
+  selectedPlan         String?  // starter, total-compliance, business-in-a-box (LEGACY - kept for backward compatibility)
+  planId               Int?     // New relation to Plan model
+  plan                 Plan?    @relation(fields: [planId], references: [id], onDelete: SetNull)
+  billingType          String?  // monthly or annual
+  expeditedEIN         Boolean  @default(false)
+  upgradeToCompliance  Boolean  @default(false)
+  
+  // Status tracking
+  onboardingComplete   Boolean  @default(false)
+  status               String   @default("pending") // pending, active, suspended, closed
+  
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+  
+  // Relations
+  tasks                Task[]
+  documents            Document[]
+  taxFilings           TaxFiling[]
+  notes                Note[]
+  
+  @@index([userId])
+}
+
+model Task {
+  id          Int      @id @default(autoincrement())
+  companyId   Int
+  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  
+  title       String
+  description String?
+  priority    String   @default("medium") // low, medium, high
+  status      String   @default("pending") // pending, in-progress, completed
+  dueDate     DateTime?
+  assignedTo  String?
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@index([companyId])
+}
+
+model Document {
+  id          Int      @id @default(autoincrement())
+  companyId   Int
+  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  
+  name        String
+  type        String   // Articles, Operating Agreement, EIN Letter, etc.
+  fileUrl     String   // Path or URL to the document
+  fileSize    Int?     // Size in bytes
+  uploadedBy  String?
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@index([companyId])
+}
+
+model TaxFiling {
+  id          Int      @id @default(autoincrement())
+  companyId   Int
+  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  
+  year        Int
+  quarter     String?  // Q1, Q2, Q3, Q4 or Annual
+  type        String   // Federal, State, Sales Tax, etc.
+  status      String   @default("pending") // pending, filed, approved, rejected
+  dueDate     DateTime?
+  filedDate   DateTime?
+  amount      Float?
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@index([companyId])
+}
+
+model Note {
+  id          Int      @id @default(autoincrement())
+  companyId   Int
+  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  
+  content     String
+  createdBy   String?
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@index([companyId])
+}
+
+// Services Module Models
+
+model CompanyType {
+  id            Int      @id @default(autoincrement())
+  name          String   @unique // LLC, C-Corp, S-Corp, etc.
+  slug          String   @unique // llc, c-corp, s-corp
+  description   String?
+  advantages    String[] // Array of advantages
+  disadvantages String[] // Array of disadvantages
+  sortOrder     Int      @default(0)
+  isActive      Boolean  @default(true)
+  
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  // Relations
+  servicePricing ServiceCompanyPricing[]
+  plans          Plan[]
+  
+  @@index([slug])
+}
+
+model Category {
+  id          Int      @id @default(autoincrement())
+  name        String   @unique
+  slug        String   @unique
+  description String?
+  icon        String?  // Optional icon name or emoji
+  sortOrder   Int      @default(0)
+  isActive    Boolean  @default(true)
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  // Relations
+  services    ServiceCategory[]
+  
+  @@index([slug])
+}
+
+model Service {
+  id              Int             @id @default(autoincrement())
+  name            String
+  slug            String          @unique
+  description     String?
+  type            ServiceType     @default(BASE)
+  billingInterval BillingInterval @default(ONE_TIME)
+  isActive        Boolean         @default(true)
+  sortOrder       Int             @default(0)
+  
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  
+  // Relations
+  features        ServiceFeature[]
+  categories      ServiceCategory[]
+  pricing         ServiceCompanyPricing[]
+  planServices    PlanService[]
+  
+  @@index([slug])
+  @@index([type])
+  @@index([billingInterval])
+}
+
+model ServiceFeature {
+  id          Int     @id @default(autoincrement())
+  serviceId   Int
+  service     Service @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  
+  name        String
+  description String?
+  sortOrder   Int     @default(0)
+  
+  createdAt   DateTime @default(now())
+  
+  @@index([serviceId])
+}
+
+model ServiceCategory {
+  id         Int      @id @default(autoincrement())
+  serviceId  Int
+  service    Service  @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  categoryId Int
+  category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  
+  createdAt  DateTime @default(now())
+  
+  @@unique([serviceId, categoryId])
+  @@index([serviceId])
+  @@index([categoryId])
+}
+
+model ServiceCompanyPricing {
+  id            Int         @id @default(autoincrement())
+  serviceId     Int
+  service       Service     @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  companyTypeId Int
+  companyType   CompanyType @relation(fields: [companyTypeId], references: [id], onDelete: Cascade)
+  
+  priceCents    Int         // Price in cents (e.g., 29900 = $299.00)
+  currency      String      @default("USD")
+  
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  
+  @@unique([serviceId, companyTypeId])
+  @@index([serviceId])
+  @@index([companyTypeId])
+}
+
+model Plan {
+  id                    Int          @id @default(autoincrement())
+  name                  String       @unique
+  slug                  String       @unique
+  description           String?
+  type                  PlanType     @default(BASE)
+  monthlyPriceCents     Int          @default(0) // Price in cents for monthly billing
+  yearlyPriceCents      Int          @default(0) // Price in cents for yearly billing
+  yearlyDiscountPercent Int          @default(20) // Yearly discount percentage
+  isPopular             Boolean      @default(false)
+  isActive              Boolean      @default(true)
+  sortOrder             Int          @default(0)
+  companyTypeId         Int?
+  companyType           CompanyType? @relation(fields: [companyTypeId], references: [id])
+  
+  createdAt             DateTime     @default(now())
+  updatedAt             DateTime     @updatedAt
+  
+  // Relations
+  planServices          PlanService[]
+  companies             Company[]
+  
+  @@index([slug])
+}
+
+model PlanService {
+  id        Int      @id @default(autoincrement())
+  planId    Int
+  plan      Plan     @relation(fields: [planId], references: [id], onDelete: Cascade)
+  serviceId Int
+  service   Service  @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  
+  createdAt DateTime @default(now())
+  
+  @@unique([planId, serviceId])
+  @@index([planId])
+  @@index([serviceId])
+}

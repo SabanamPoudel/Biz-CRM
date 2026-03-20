@@ -1,0 +1,21 @@
+/* Hide Stripe badge */
+.StripeElement iframe {
+  z-index: 1 !important;
+}
+
+/* Hide Stripe promotional badge */
+.__PrivateStripeElement iframe[name*="__privateStripeFrame"] {
+  display: none !important;
+}
+
+/* Additional Stripe badge hiding */
+div[class*="__PrivateStripeElement"] {
+  display: block !important;
+}
+
+/* Hide any floating Stripe badges */
+[class*="stripe-badge"],
+[id*="stripe-badge"] {
+  display: none !important;
+  visibility: hidden !important;
+}
